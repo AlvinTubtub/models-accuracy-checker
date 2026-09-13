@@ -1,0 +1,13 @@
+{
+  "exported_at_utc": "2026-09-13T10:35:30.602011+00:00",
+  "is_synthetic": false,
+  "description": "Exact trained model evaluation artifacts (LIR, ARIMA, LSTM, Naive)",
+  "source_data_window": "2020-01-02 to 2026-09-11",
+  "requested_symbols": [
+    "ALI"
+  ],
+  "exported_symbols": [
+    "ALI"
+  ],
+  "failed_symbols": []
+}
