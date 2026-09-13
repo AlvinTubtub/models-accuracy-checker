@@ -1,0 +1,90 @@
+name: Manual Model Training & Accuracy Audit
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: "Company symbol to train ('all' for all 15 PSE tickers)"
+        required: true
+        default: "all"
+        type: string
+      skip_lstm:
+        description: "Skip LSTM deep neural network training (Fast mode: LIR + ARIMA only)"
+        required: false
+        default: false
+        type: boolean
+      epochs:
+        description: "LSTM training epochs"
+        required: false
+        default: "30"
+        type: string
+      commit_results:
+        description: "Commit and push updated evaluation JSON files back to repository"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  train-and-evaluate:
+    name: Train Models & Run Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Fetch raw PSE historical data
+        run: |
+          python scripts/fetch_raw_data.py
+
+      - name: Run manual model training
+        run: |
+          LSTM_FLAG=""
+          if [ "${{ inputs.skip_lstm }}" = "true" ]; then
+            LSTM_FLAG="--skip-lstm"
+          fi
+
+          if [ "${{ inputs.symbol }}" = "all" ] || [ -z "${{ inputs.symbol }}" ]; then
+            python scripts/train_models.py --all --epochs ${{ inputs.epochs }} $LSTM_FLAG
+          else
+            python scripts/train_models.py --symbol ${{ inputs.symbol }} --epochs ${{ inputs.epochs }} $LSTM_FLAG
+          fi
+
+      - name: Run independent verification audit
+        run: |
+          python scripts/run_recheck_cli.py --data-dir data/evaluations
+
+      - name: Upload evaluation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-artifacts
+          path: data/evaluations/
+          retention-days: 30
+
+      - name: Commit and push updated evaluation JSONs
+        if: ${{ inputs.commit_results }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/evaluations/*.json
+          if git diff --staged --quiet; then
+            echo "No changes in evaluation files to commit."
+          else
+            git commit -m "Update model evaluation artifacts via manual GitHub Actions training [skip ci]"
+            git push
+          fi

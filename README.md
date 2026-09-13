@@ -101,9 +101,31 @@ python scripts/run_recheck_cli.py --data-dir data/evaluations
 streamlit run dashboard/app.py
 ```
 
-## Azure for Students Deployment
+## Cloud Training via GitHub Actions (Manual On-Demand)
 
-To deploy this pipeline and host the Streamlit dashboard 24/7 for free using your Azure for Students subscription (with manual training execution), see [AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md).
+You can run the full model training pipeline directly in GitHub's cloud runners (4 vCPUs, 16 GB RAM) with **zero background crons**:
+
+1. Go to the **Actions** tab in your GitHub repository.
+2. Under **Workflows**, click **Manual Model Training & Accuracy Audit**.
+3. Click **Run workflow**:
+   * **Company symbol**: enter `all` (or a specific ticker like `ALI`).
+   * **Skip LSTM**: check this if you only want fast LIR and ARIMA training.
+   * **Epochs**: specify LSTM epochs (default: `30`).
+   * **Commit results**: check to automatically commit and push the updated `data/evaluations/<SYMBOL>.json` files back to `main`.
+4. Click **Run workflow**.
+
+## Free Live Dashboard Deployment (Streamlit Community Cloud)
+
+To host the interactive Streamlit dashboard online 24/7 for free:
+
+1. Push this repository to your GitHub account.
+2. Go to [share.streamlit.io](https://share.streamlit.io) and log in with your GitHub account.
+3. Click **Create app**:
+   * **Repository**: `<your-username>/models-accuracy-checker`
+   * **Branch**: `main`
+   * **Main file path**: `dashboard/app.py`
+4. Click **Deploy**.
+5. Your dashboard will be live at a public URL (e.g. `https://models-accuracy-checker.streamlit.app`) and automatically updates whenever updated evaluation files are pushed!
 
 ## What "recheck" actually means here
 
@@ -133,11 +155,23 @@ ARIMA, LSTM, Naive), across every date in the reported evaluation window:
 ## Repository layout
 
 ```
+.github/workflows/
+  train.yml                manual GitHub Actions model training workflow
+  test.yml                 CI test suite workflow
 bridge/                  runs INSIDE the original repo, produces JSON only
   export_evaluations.py
   README.md
 config/
   companies.py             15-ticker/sector reference metadata
+training/                exact model computations (Tier 3)
+  features.py              PACF lag selection & technical indicators
+  split.py                 chronological train/eval split & TimeSeriesSplit
+  pipeline.py              end-to-end training orchestrator
+  models/
+    lir.py                 Lag-Informed Regression (LASSO)
+    arima.py               ARIMA grid search & walk-forward prediction
+    lstm.py                PyTorch univariate LSTM
+    naive.py               Naive lag-1 persistence baseline
 recheck/                 independent recompute/validate/compare logic
   metrics.py              RMSE / MAE / MASE / R² from scratch
   schema.py                export schema + validation
@@ -151,15 +185,19 @@ dashboard/
     charts.py              Plotly visualization routines
     tables.py              Styled summary tables and metrics display
 scripts/
+  fetch_raw_data.py        downloads raw 15 PSE CSVs from GitHub
+  train_models.py          manual model training CLI
   run_recheck_cli.py       headless CLI report
   generate_sample_data.py  synthetic demo data generator
 data/
-  evaluations/             put exported (or sample) JSON files here
+  raw/                     raw historical CSV files (Jan 2, 2020 – Sep 11, 2026)
+  evaluations/             exported model evaluation JSON files
 tests/
   test_metrics.py          unit tests for mathematical correctness
   test_schema.py           unit tests for invariant validation
   test_compare.py          unit tests for diffing & tolerances
   test_loader.py           unit tests for loader and error handling
+  test_training.py         unit tests for feature extraction & model training
 ```
 
 ## Pushing to your new repo
