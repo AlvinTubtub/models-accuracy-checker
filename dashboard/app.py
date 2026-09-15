@@ -157,8 +157,8 @@ def main():
         col_left, col_right = st.columns([3, 2])
 
         with col_left:
-            st.markdown("#### Model Win Rate vs. Naive Baseline")
-            st.caption("Percentage of companies where the model achieves **MASE < 1.0** (outperforming the Naive lag-1 persistence benchmark).")
+            st.markdown("#### Models Achieving MASE < 1.0 (Development Scaling Reference)")
+            st.caption("Percentage of companies where the model achieves **MASE < 1.0** (error below the development-period Naive scaling reference). Direct holdout superiority is evaluated separately against the aligned holdout Naive forecast.")
             if not win_sum.empty:
                 fig_win = plot_win_rates(win_sum)
                 st.plotly_chart(fig_win, use_container_width=True)
@@ -199,7 +199,7 @@ def main():
                 "Best RMSE": f"₱{best_c.recomputed.rmse:.3f}",
                 "Best MASE": f"{best_c.recomputed.mase:.3f}",
                 "Naive RMSE": f"₱{naive_c.recomputed.rmse:.3f}" if naive_c else "N/A",
-                "Beats Naive?": "🏆 Yes" if best_c.beats_naive_recomputed else "❌ No",
+                "MASE < 1.0?": "✅ Yes" if best_c.beats_naive_recomputed else "❌ No",
                 "Audit Status": "✅ OK" if all(c.within_tolerance for c in comp_list) else "⚠️ Diff",
             })
         
@@ -288,7 +288,7 @@ def main():
 
         st.markdown("---")
         st.markdown("#### Sector-Level Median MASE")
-        st.caption("Median recomputed MASE per sector. Lower is better; MASE < 1.0 beats the Naive baseline.")
+        st.caption("Median recomputed MASE per sector. Lower is better; MASE < 1.0 indicates error below the development-period Naive scaling reference. Direct holdout superiority is evaluated separately.")
         sector_df = sector_breakdown(df)
         if not sector_df.empty:
             st.dataframe(sector_df, use_container_width=True, hide_index=True)

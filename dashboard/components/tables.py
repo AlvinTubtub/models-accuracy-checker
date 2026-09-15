@@ -32,7 +32,7 @@ def render_company_metrics_table(comparisons: list[ModelComparison]) -> pd.DataF
                 "Rep. R²": f"{float(c.reported['r2']):.4f}",
                 "Max Diff": f"{c.max_abs_diff:.6f}",
                 "Status": "✅ Match" if c.within_tolerance else "❌ Mismatch",
-                "Beats Naive": "🏆 Yes" if c.beats_naive_recomputed else "No",
+                "MASE < 1.0": "✅ Yes" if c.beats_naive_recomputed else "No",
             }
         )
     return pd.DataFrame(rows)

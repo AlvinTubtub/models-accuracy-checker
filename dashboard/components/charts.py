@@ -174,8 +174,8 @@ def plot_win_rates(win_summary_df: pd.DataFrame) -> go.Figure:
     )
 
     fig.update_layout(
-        title=dict(text="Model Win Rate vs. Naive Benchmark (% Companies where MASE < 1.0)", font=dict(size=15)),
-        yaxis=dict(title="Win Rate (%)", range=[0, 110], showgrid=True, gridcolor="#E5E7EB"),
+        title=dict(text="Model Rate with MASE < 1.0 (% Companies vs Development Scaling Reference)", font=dict(size=15)),
+        yaxis=dict(title="% Companies (MASE < 1.0)", range=[0, 110], showgrid=True, gridcolor="#E5E7EB"),
         xaxis=dict(title="Forecasting Model"),
         template="plotly_white",
         margin=dict(l=40, r=40, t=60, b=40),
@@ -271,5 +271,83 @@ def plot_actual_vs_predicted(
         template="plotly_white",
         margin=dict(l=40, r=40, t=60, b=40),
         height=400,
+    )
+    return fig
+
+
+def plot_formal_latest_60_sessions(
+    target_dates: list,
+    actual_closes: list[float],
+    predicted_by_model: dict[str, list[float]],
+    symbol: str,
+) -> go.Figure:
+    """Plot explicitly labeled: 'Latest 60 sessions from the complete formal holdout'.
+
+    Formal statistical tests and aggregate metrics continue to use the entire
+    frozen holdout series.
+    """
+    n = len(target_dates)
+    w_dates = target_dates[-60:] if n >= 60 else target_dates
+    w_actual = actual_closes[-60:] if n >= 60 else actual_closes
+    w_preds = {
+        m: p[-60:] if len(p) >= 60 else p
+        for m, p in predicted_by_model.items()
+    }
+    fig = plot_time_series(
+        target_dates=w_dates,
+        actual_closes=w_actual,
+        predicted_by_model=w_preds,
+        symbol=symbol,
+    )
+    fig.update_layout(
+        title=dict(
+            text=f"{symbol} — Latest 60 Sessions from the Complete Formal Holdout",
+            font=dict(size=15),
+        )
+    )
+    return fig
+
+
+def plot_prospective_rolling_windows(
+    windows_dict: dict[str, Any],
+    symbol: str,
+    model: str,
+) -> go.Figure:
+    """Plot prospective trading-session rolling accuracy skill scores vs Naive."""
+    window_labels = ["latest_5", "latest_20", "latest_60", "lifetime"]
+    display_names = ["Latest 5 Sessions", "Latest 20 Sessions", "Latest 60 Sessions", "Lifetime"]
+    skills = []
+
+    for w_key in window_labels:
+        w_obj = windows_dict.get(w_key)
+        if w_obj:
+            skills.append(getattr(w_obj, "rmse_skill_vs_naive", 0.0) * 100.0)
+        else:
+            skills.append(0.0)
+
+    colors = ["#10B981" if s >= 0 else "#EF4444" for s in skills]
+
+    fig = go.Figure(
+        data=[
+            go.Bar(
+                x=display_names,
+                y=skills,
+                marker_color=colors,
+                text=[f"{s:+.1f}%" for s in skills],
+                textposition="auto",
+            )
+        ]
+    )
+    fig.add_hline(y=0, line_dash="solid", line_color="#374151")
+    fig.update_layout(
+        title=dict(
+            text=f"{symbol} ({model.upper()}) — Prospective RMSE Skill vs Naive Benchmark",
+            font=dict(size=15),
+        ),
+        xaxis=dict(title="Settled Trading-Session Window"),
+        yaxis=dict(title="RMSE Skill (% Improvement vs Naive)"),
+        template="plotly_white",
+        height=350,
+        margin=dict(l=40, r=40, t=60, b=40),
     )
     return fig

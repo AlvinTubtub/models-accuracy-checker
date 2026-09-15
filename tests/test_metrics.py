@@ -41,7 +41,7 @@ def test_known_analytical_values():
     assert m.mae == pytest.approx(2.5)
     assert m.mase == pytest.approx(1.0)  # exactly 1.0
     assert m.r2 == pytest.approx(0.94)
-    assert beats_naive(m.mase) is False  # MASE == 1.0 does not beat naive (< 1.0)
+    assert beats_naive(m.mase) is False  # MASE == 1.0 is not strictly below scaling reference (< 1.0)
 
 
 def test_length_mismatch_raises():

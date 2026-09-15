@@ -54,7 +54,10 @@ def comparisons_to_dataframe(
 
 
 def win_rate_summary(df: pd.DataFrame) -> pd.DataFrame:
-    """Per principal model: how many / what % of companies beat Naive (recomputed)."""
+    """Per principal model: how many / what % of companies achieve MASE < 1.0
+    relative to the development-period Naive scaling reference.
+    Direct holdout superiority is evaluated separately.
+    """
 
     if df.empty:
         return pd.DataFrame()
@@ -82,7 +85,13 @@ def win_rate_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def best_model_counts(df: pd.DataFrame) -> pd.DataFrame:
-    """How often each principal model has the lowest recomputed RMSE per company."""
+    """How often each principal model has the lowest recomputed RMSE per company.
+
+    NOTE: This is a descriptive tally of company-specific bests. Raw RMSE or MAE
+    values must NEVER be averaged across companies to declare an overall winner,
+    as PSE price levels vary by orders of magnitude (e.g. ₱0.50 vs ₱2,000+).
+    Scale-independent cross-company evaluation requires MASE and rank-based tests.
+    """
 
     if df.empty:
         return pd.DataFrame()
@@ -98,6 +107,23 @@ def best_model_counts(df: pd.DataFrame) -> pd.DataFrame:
         .size()
         .reset_index(name="companies_best")
         .sort_values("companies_best", ascending=False)
+    )
+    return counts.reset_index(drop=True)
+
+
+def best_model_counts_mase(df: pd.DataFrame) -> pd.DataFrame:
+    """How often each model achieves the lowest recomputed MASE per company."""
+
+    if df.empty:
+        return pd.DataFrame()
+
+    idx = df.groupby("symbol")["recomputed_mase"].idxmin()
+    best_per_company = df.loc[idx, ["symbol", "model", "model_label"]]
+    counts = (
+        best_per_company.groupby(["model", "model_label"])
+        .size()
+        .reset_index(name="companies_best_mase")
+        .sort_values("companies_best_mase", ascending=False)
     )
     return counts.reset_index(drop=True)
 
@@ -130,3 +156,19 @@ def mismatch_table(df: pd.DataFrame) -> pd.DataFrame:
     return df[~df["within_tolerance"]].sort_values("max_abs_diff", ascending=False).reset_index(
         drop=True
     )
+
+
+from recheck.cross_company import (
+    CrossCompanySummary,
+    CrossCompanyVerificationError,
+    FriedmanResult,
+    MethodDescriptiveStats,
+    PairwiseWilcoxonResult,
+    evaluate_cross_company,
+    evaluate_cross_company_from_matrix,
+    method_stats_to_dataframe,
+    rank_matrix_to_dataframe,
+    wilcoxon_results_to_dataframe,
+)
+from recheck.oos import oos_comparisons_to_dataframe
+

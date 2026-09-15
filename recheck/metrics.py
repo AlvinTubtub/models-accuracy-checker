@@ -115,7 +115,83 @@ def mase_denominator_from_closes(development_closes: Sequence[float]) -> float:
     return denominator
 
 
-def beats_naive(mase: float) -> bool:
-    """MASE below 1.0 means the model beats the naive Close(t)=Close(t+1) baseline."""
+def mase_below_one(mase: float) -> bool:
+    """Returns True if MASE is strictly below 1.0.
 
+    MASE < 1.0 indicates error below the development-period Naive scaling reference.
+    Direct holdout superiority is evaluated separately against the aligned holdout Naive forecast.
+    """
     return mase < 1.0
+
+
+def beats_naive(mase: float) -> bool:
+    """Legacy alias for mase_below_one. Preserved for backward compatibility.
+
+    Warning: MASE < 1.0 indicates error below the development-period Naive scaling reference,
+    not necessarily direct out-of-sample holdout superiority.
+    """
+    return mase_below_one(mase)
+
+
+def beats_naive_rmse(model_rmse: float, naive_rmse: float) -> bool:
+    """Returns True if the model achieved strictly lower RMSE than Naive on the aligned holdout."""
+    return float(model_rmse) < float(naive_rmse)
+
+
+def beats_naive_mae(model_mae: float, naive_mae: float) -> bool:
+    """Returns True if the model achieved strictly lower MAE than Naive on the aligned holdout."""
+    return float(model_mae) < float(naive_mae)
+
+
+def rmse_skill_vs_naive(model_rmse: float, naive_rmse: float) -> float:
+    """Compute relative RMSE percentage skill score vs Naive.
+    
+    1.0 - (RMSE_model / RMSE_naive). Positive values indicate skill.
+    """
+    m_rmse = float(model_rmse)
+    n_rmse = float(naive_rmse)
+    if n_rmse <= 0.0 or not math.isfinite(n_rmse):
+        return 0.0
+    return 1.0 - (m_rmse / n_rmse)
+
+
+def mae_skill_vs_naive(model_mae: float, naive_mae: float) -> float:
+    """Compute relative MAE percentage skill score vs Naive.
+    
+    1.0 - (MAE_model / MAE_naive). Positive values indicate skill.
+    """
+    m_mae = float(model_mae)
+    n_mae = float(naive_mae)
+    if n_mae <= 0.0 or not math.isfinite(n_mae):
+        return 0.0
+    return 1.0 - (m_mae / n_mae)
+
+
+def compute_loss_differentials(
+    actual_closes: Sequence[float],
+    predicted_1: Sequence[float],
+    predicted_2: Sequence[float],
+    *,
+    loss_type: str = "squared",
+) -> list[float]:
+    """Compute point-by-point loss differential d_t = Loss(e_{1,t}) - Loss(e_{2,t}).
+
+    For comparing model 1 against model 2 (e.g. Model vs Naive):
+    - A negative d_t indicates model 1 had a smaller error than model 2 at step t.
+    - loss_type: 'squared' (e^2) or 'absolute' (|e|).
+    """
+    actual = _to_float_list(actual_closes, name="actual_closes")
+    p1 = _to_float_list(predicted_1, name="predicted_1")
+    p2 = _to_float_list(predicted_2, name="predicted_2")
+    if not (len(actual) == len(p1) == len(p2)):
+        raise MetricComputationError("actual_closes, predicted_1, and predicted_2 must have equal length")
+
+    e1 = [p - a for p, a in zip(p1, actual)]
+    e2 = [p - a for p, a in zip(p2, actual)]
+
+    if loss_type == "squared":
+        return [err1**2 - err2**2 for err1, err2 in zip(e1, e2)]
+    elif loss_type == "absolute":
+        return [abs(err1) - abs(err2) for err1, err2 in zip(e1, e2)]
+    else:
+        raise MetricComputationError(f"Unsupported loss_type: '{loss_type}'. Must be 'squared' or 'absolute'")

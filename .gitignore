@@ -50,3 +50,8 @@ report_output/
 # Keep sample data or gitignore large evaluation dumps if desired:
 # data/evaluations/*.json
 # !data/evaluations/.gitkeep
+
+# SQLite database files
+*.db
+*.sqlite3
+data/prospective/*.db

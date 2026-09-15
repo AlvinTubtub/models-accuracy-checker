@@ -4,6 +4,7 @@ import pytest
 
 from recheck.schema import (
     ExportValidationError,
+    ProvenanceTier,
     parse_company_export,
 )
 
@@ -13,6 +14,7 @@ def _valid_payload():
         "symbol": "ALI",
         "name": "Ayala Land, Inc.",
         "sector": "Property",
+        "provenance_tier": "DEMO",
         "split": {
             "evaluation_proportion": 0.15,
             "development_pairs": 100,
@@ -48,6 +50,9 @@ def test_valid_payload_parses():
     assert export.has_errors is False
     assert len(export.issues) == 0
     assert len(export.target_dates) == 3
+    assert export.provenance_tier == ProvenanceTier.DEMO
+    # DEMO tier must NOT be finalizable as formal research evidence
+    assert export.is_formal_finalizable is False
 
 
 def test_missing_required_root_key():
@@ -64,9 +69,15 @@ def test_missing_required_model():
         parse_company_export(payload)
 
 
+def test_missing_naive_is_hard_validation_failure():
+    payload = _valid_payload()
+    del payload["metrics"]["naive"]
+    with pytest.raises(ExportValidationError, match="missing Naive is a hard failure"):
+        parse_company_export(payload)
+
+
 def test_non_chronological_dates_flagged_as_error():
     payload = _valid_payload()
-    # Reverse dates: 2026-09-03 before 2026-09-01
     payload["backtest"]["target_dates"] = ["2026-09-03", "2026-09-02", "2026-09-01"]
     export = parse_company_export(payload)
     assert export.has_errors is True
@@ -81,9 +92,90 @@ def test_duplicate_dates_flagged_as_error():
     assert any("duplicate" in issue.message for issue in export.issues)
 
 
-def test_length_mismatch_flagged_as_error():
+def test_actual_length_mismatch_flagged_as_error():
     payload = _valid_payload()
-    payload["backtest"]["actual_closes"] = [30.0, 31.0]  # length 2 instead of 3
+    payload["backtest"]["actual_closes"] = [30.0, 31.0]  # length 2 != 3
     export = parse_company_export(payload)
     assert export.has_errors is True
     assert any("actual_closes length" in issue.message for issue in export.issues)
+
+
+def test_each_principal_prediction_length_mismatch():
+    for model in ("lag_reg", "arima", "lstm"):
+        payload = _valid_payload()
+        payload["backtest"]["predicted_closes_by_model"][model] = [30.1, 30.9]  # 2 != 3
+        export = parse_company_export(payload)
+        assert export.has_errors is True
+        assert any(f"predicted_closes_by_model['{model}'] length" in issue.message for issue in export.issues)
+
+
+def test_naive_prediction_length_mismatch():
+    payload = _valid_payload()
+    payload["backtest"]["predicted_closes_by_model"]["naive"] = [30.0, 30.0]  # 2 != 3
+    export = parse_company_export(payload)
+    assert export.has_errors is True
+    assert any("predicted_closes_by_model['naive'] length" in issue.message for issue in export.issues)
+
+
+def test_evaluation_pairs_mismatch():
+    payload = _valid_payload()
+    payload["split"]["evaluation_pairs"] = 5  # 5 != 3
+    export = parse_company_export(payload)
+    assert export.has_errors is True
+    assert any("split.evaluation_pairs (5) != len(target_dates) (3)" in issue.message for issue in export.issues)
+
+
+def test_observation_count_mismatch():
+    payload = _valid_payload()
+    payload["metrics"]["lstm"]["observations"] = 2  # 2 != 3
+    export = parse_company_export(payload)
+    assert export.has_errors is True
+    assert any("metrics['lstm']['observations'] (2) != len(target_dates) (3)" in issue.message for issue in export.issues)
+
+
+def test_wrong_evaluation_start():
+    payload = _valid_payload()
+    payload["split"]["evaluation_start"] = "2026-08-30"  # start doesn't match first target_date
+    export = parse_company_export(payload)
+    assert export.has_errors is True
+    assert any("first target_date" in issue.message for issue in export.issues)
+
+
+def test_wrong_evaluation_end():
+    payload = _valid_payload()
+    payload["split"]["evaluation_end"] = "2026-09-10"  # end doesn't match last target_date
+    export = parse_company_export(payload)
+    assert export.has_errors is True
+    assert any("last target_date" in issue.message for issue in export.issues)
+
+
+def test_nan_prediction_flagged_as_error():
+    payload = _valid_payload()
+    payload["backtest"]["predicted_closes_by_model"]["lag_reg"][1] = float("nan")
+    export = parse_company_export(payload)
+    assert export.has_errors is True
+    assert any("non-finite prediction" in issue.message for issue in export.issues)
+
+
+def test_infinite_prediction_flagged_as_error():
+    payload = _valid_payload()
+    payload["backtest"]["predicted_closes_by_model"]["arima"][1] = float("inf")
+    export = parse_company_export(payload)
+    assert export.has_errors is True
+    assert any("non-finite prediction" in issue.message for issue in export.issues)
+
+
+def test_invalid_provenance_type_raises():
+    payload = _valid_payload()
+    payload["provenance_tier"] = "FABRICATED_TIER"
+    with pytest.raises(ExportValidationError, match="invalid provenance_tier"):
+        parse_company_export(payload)
+
+
+def test_formal_frozen_provenance_eligibility():
+    payload = _valid_payload()
+    payload["provenance_tier"] = "FORMAL_FROZEN"
+    export = parse_company_export(payload)
+    assert export.provenance_tier == ProvenanceTier.FORMAL_FROZEN
+    assert export.has_errors is False
+    assert export.is_formal_finalizable is True
